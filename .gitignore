@@ -1,0 +1,23 @@
+# Secrets (never push API keys or DB password)
+.env
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node (if React frontend is added later)
+node_modules/
+dist/
+
+# Logs
+*.log

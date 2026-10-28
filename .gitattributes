@@ -1,0 +1,5 @@
+*.pdf binary
+*.joblib binary
+*.faiss binary
+*.pkl binary
+*.png binary

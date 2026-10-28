@@ -1,0 +1,2 @@
+1. custom comments in ML folder in all files. The existing comments are for understanding only.
+2. add comments and file description in AI folder in all files 

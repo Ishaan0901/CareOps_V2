@@ -1,0 +1,11 @@
+department_id,department,unit_type,licensed_beds,target_patients_per_nurse
+1,Emergency Department,ED,40,4
+2,ICU,Critical care,40,2
+3,NICU,Critical care,10,2
+4,General Medicine,Ward,80,5
+5,General Surgery,Ward,60,5
+6,Orthopedics,Ward,40,5
+7,Cardiology,Ward,30,4
+8,Pediatrics,Ward,40,4
+9,Obstetrics and Gynecology,Ward,40,4
+10,Isolation Unit,Isolation,20,4

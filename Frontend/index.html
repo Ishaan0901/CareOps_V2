@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareOps AI: Smarter hospital operations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <nav class="nav" id="nav" aria-label="Main">
+    <span class="brand" id="brand">CareOps AI</span>
+    <button class="lk on" data-v="home" aria-current="page">Home</button>
+    <button class="lk" data-v="trends">Trends</button>
+    <button class="lk" data-v="alerts">Alerts</button>
+    <button class="lk" data-v="departments">Departments</button>
+    <button class="lk" data-v="kb">Knowledge base</button>
+  </nav>
+
+  <!-- HOME -->
+  <main class="view" id="home">
+    <section class="hero">
+      <div>
+        <h1 class="t" id="h1">CareOps AI</h1>
+        <p class="sub">Smarter hospital operations</p>
+        <ul class="pts">
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="2,13 7,13 10,5 14,20 17,10 19,13 22,13"/></svg>
+            <div><b>Monitor workload</b><span>Live occupancy, ED waiting time, arrivals per hour and staff present, updated as patients are admitted and discharged.</span></div></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="2,18 8,14 12,16 16,4 22,9"/><circle cx="16" cy="4" r="1.6"/></svg>
+            <div><b>Spot anomalies</b><span>Each hour is compared with the usual pattern, so sudden surges and staff shortages are flagged early.</span></div></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
+            <div><b>Get answers from hospital policies</b><span>Ask the assistant about procedures or today's numbers. It answers from your documents and names the source.</span></div></li>
+        </ul>
+        <button class="btn" id="goStatus">View live status</button>
+        <p class="asof" id="asof"></p>
+      </div>
+      <div class="hero-kpis" id="status">
+        <div class="kpi" id="k-occ"><div class="l">Occupancy</div><div class="v" id="v-occ"></div><div class="st"><i></i><span id="s-occ"></span></div></div>
+        <div class="kpi" id="k-wait"><div class="l">ED wait</div><div class="v" id="v-wait"></div><div class="st"><i></i><span id="s-wait"></span></div></div>
+        <div class="kpi" id="k-arr"><div class="l">Arrivals this hour</div><div class="v" id="v-arr"></div><div class="st"><i></i><span id="s-arr"></span></div></div>
+        <div class="kpi" id="k-staff"><div class="l">Staff available</div><div class="v" id="v-staff"></div><div class="st"><i></i><span id="s-staff"></span></div></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- TRENDS -->
+  <main class="view" id="trends" hidden>
+    <div class="bar">
+      <div class="tabs" role="tablist" aria-label="Metric">
+        <button class="tab" role="tab" data-m="arrivals" aria-selected="true">Arrivals</button>
+        <button class="tab" role="tab" data-m="occupancy" aria-selected="false">Occupancy</button>
+        <button class="tab" role="tab" data-m="wait" aria-selected="false">ED wait</button>
+      </div>
+      <select class="range" id="range" aria-label="Time range">
+        <option value="48">Last 48 hours</option>
+        <option value="24">Last 24 hours</option>
+      </select>
+    </div>
+    <section class="box chart" aria-labelledby="ct">
+      <h2 id="ct">ED arrivals: past and forecast</h2>
+      <svg id="svg" viewBox="0 0 1000 340" role="img" aria-label="Line chart of past values and forecast"></svg>
+    </section>
+    <section class="stats" aria-label="Summary">
+      <div class="stat"><div class="lbl">Next hour forecast</div><div class="v" id="s1"></div></div>
+      <div class="stat"><div class="lbl">Peak expected</div><div class="v" id="s2"></div></div>
+      <div class="stat"><div class="lbl">Anomalies in range</div><div class="v" id="s3"></div></div>
+    </section>
+  </main>
+
+  <!-- ALERTS -->
+  <main class="view" id="alerts" hidden>
+    <section class="top" aria-label="Summary">
+      <div class="box big c-green" id="capbox"><div class="lbl">Capacity level</div><div class="v" id="cap-v"></div><span class="badge t-green" id="cap-b"></span></div>
+      <div class="box big" id="hosp"><div class="lbl">Hospital status</div><div class="v" id="hosp-v"></div><span class="badge" id="hosp-b">Rule based</span></div>
+    </section>
+    <section class="box alerts" aria-labelledby="ah">
+      <h2 id="ah">Active alerts</h2>
+      <ul id="alist"></ul>
+    </section>
+    <section class="box alerts" id="actbox" aria-labelledby="ah2" hidden>
+      <h2 id="ah2">Recommended actions</h2>
+      <ul id="actlist"></ul>
+    </section>
+  </main>
+
+  <!-- DEPARTMENTS -->
+  <main class="view" id="departments" hidden>
+    <section class="deps" id="deps" aria-label="Departments"></section>
+    <section class="box staff c-green" id="staff" aria-label="Staff availability">
+      <div class="lbl">Staff availability</div>
+      <div class="n" id="staff-n"></div>
+      <div class="track"><i id="staff-bar"></i></div>
+    </section>
+  </main>
+
+  <!-- KNOWLEDGE BASE -->
+  <main class="view" id="kb" hidden>
+    <input class="search" id="search" type="search" placeholder="Search documents..." aria-label="Search documents">
+    <section class="box docs" aria-label="Hospital documents">
+      <ul id="list"></ul>
+      <p class="empty" id="empty" hidden>No documents match your search. Try a shorter word.</p>
+      <button class="more" id="more"></button>
+    </section>
+  </main>
+</div>
+
+<aside class="chat" id="chat" aria-label="CareOps assistant">
+  <header>CareOps assistant <button class="x" id="close" aria-label="Close assistant">x</button></header>
+  <div class="log" id="log" aria-live="polite">
+    <div class="m a">Hello! Ask me about hospital policies, today's numbers, capacity level or the arrivals forecast.</div>
+  </div>
+  <form id="form"><input id="q" type="text" placeholder="Type a message..." aria-label="Type a message" autocomplete="off"></form>
+</aside>
+<button class="fab" id="fab" aria-label="Open assistant" aria-expanded="false">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
+</button>
+
+<script src="script.js"></script>
+</body>
+</html>

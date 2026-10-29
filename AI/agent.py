@@ -1,4 +1,4 @@
-"""LangGraph agent: decides which tool to call (policy documents, live data, forecast), then answers."""
+"""LangGraph agent: decides which tool to call (policy documents, live data , forecast), then answers."""
 from langchain_core.messages import SystemMessage
 from langgraph.graph.message import add_messages
 from typing import Annotated, TypedDict
@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class AgentState(TypedDict):
-    messages: Annotated[list, add_messages]
+    messages: Annotated[list , add_messages]
 
 
 tools=[Search_hospital_docs, Get_current_status, Get_capacity_status, Get_arrival_forecast, Get_spike_status]

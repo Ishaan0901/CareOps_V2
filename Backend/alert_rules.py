@@ -1,4 +1,4 @@
-# Alert rules from CGH-OPS-002 (colours) and CGH-OPS-004 (capacity levels)
+# Alert colours (CGH-OPS-002) and capacity levels (CGH-OPS-004) from the policy PDFs
 NAMES = ["Green", "Yellow", "Orange", "Red"]
 
 def up(v, y, o, r):      # higher value = worse

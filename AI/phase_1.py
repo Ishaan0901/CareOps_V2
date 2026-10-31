@@ -1,4 +1,4 @@
-"""Run ONCE (python AI/phase_1.py) to read the PDFs and build the FAISS Vector_Store."""
+# Run once (python AI/phase_1.py): reads the PDFs and builds the FAISS index in Vector_Store
 from pathlib import Path
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter

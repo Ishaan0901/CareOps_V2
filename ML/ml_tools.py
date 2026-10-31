@@ -4,13 +4,18 @@ detect_anomaly(hour, day_of_week, arrivals)
     Is this hour's ED arrivals unusually high?
 predict_arrivals(history, timestamp)
     Forecast of ED arrivals for the next hour.
+forecast(metric, values, last_time)
+    Forecast of arrivals, occupancy or wait for the next 6 hours.
 
 The trained files are loaded from the saved_models folder next to this file.
 """
+import json
 import os
 
 import joblib
+import numpy as np
 import pandas as pd
+from xgboost import XGBRegressor
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'saved_models')
 
@@ -73,3 +78,57 @@ def predict_arrivals(history, timestamp):
     }
     x = pd.DataFrame([features])[_feature_names]
     return round(float(_arrivals_model.predict(x)[0]), 1)
+
+
+# ---- 6 hour forecast (models made by train_forecasts.py) ----
+# One model for every metric and every hour ahead, loaded when first needed.
+_forecast_cache = {}
+
+
+def _forecast_model(metric, hours_ahead):
+    key = (metric, hours_ahead)
+    if key not in _forecast_cache:
+        model = XGBRegressor()
+        model.load_model(os.path.join(MODEL_DIR, f'forecast_{metric}_h{hours_ahead}.json'))
+        _forecast_cache[key] = model
+    return _forecast_cache[key]
+
+
+def _feature_list():
+    if 'features' not in _forecast_cache:
+        with open(os.path.join(MODEL_DIR, 'forecast_features.json')) as f:
+            _forecast_cache['features'] = json.load(f)
+    return _forecast_cache['features']
+
+
+def make_features(values, now, hours_ahead):
+    """Features for the hour (now + hours_ahead). values = hourly values up to now."""
+    target = now + pd.Timedelta(hours=hours_ahead)
+    n = len(values)
+    return {
+        'hour': target.hour,
+        'day_of_week': target.dayofweek,
+        'month': target.month,
+        'is_weekend': int(target.dayofweek >= 5),
+        'is_holiday': int((target.month, target.day) in HOLIDAYS),
+        'now': values[-1],
+        'same_hour_yesterday': values[n - 1 + hours_ahead - 24],
+        'same_hour_last_week': values[n - 1 + hours_ahead - 168],
+        'roll_mean_6': values[-6:].mean(),
+        'roll_mean_24': values[-24:].mean(),
+    }
+
+
+def forecast(metric, values, last_time, steps=6):
+    """metric is 'arrivals', 'occupancy' or 'wait'.
+    values = last 168 hourly values (oldest first), last_time = time of the last value."""
+    values = np.asarray(values, dtype=float)
+    result = []
+    for h in range(1, steps + 1):
+        model = _forecast_model(metric, h)
+        x = pd.DataFrame([make_features(values, last_time, h)])[_feature_list()]
+        value = max(float(model.predict(x)[0]), 0)
+        if metric == 'occupancy':
+            value = min(value, 100)
+        result.append({'hour': last_time + pd.Timedelta(hours=h), 'value': round(value, 1)})
+    return result

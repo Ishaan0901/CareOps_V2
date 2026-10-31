@@ -60,7 +60,7 @@
     });
     var f={'font-size':24,fill:'#566d73','font-family':'IBM Plex Sans,Segoe UI,sans-serif',class:'cap'};
     el('text',Object.assign({x:L,y:318},f),'Past (database)');
-    if(fc.length)el('text',Object.assign({x:nx+30,y:318},f),'Forecast (ML)');
+    if(fc.length)el('text',Object.assign({x:R,y:318,'text-anchor':'end'},f),'Forecast (ML)');
     $('ct').textContent=m.title;
     $('s2').textContent=m.peak;
     if(fc.length)count($('s1'),fc[0],m.suf,1);else $('s1').textContent='Not available';

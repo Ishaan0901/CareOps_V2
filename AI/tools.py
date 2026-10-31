@@ -1,4 +1,4 @@
-"""RAG tool: searches the hospital PDFs (FAISS vector store) and returns text with source file names."""
+# Tool that searches the hospital PDFs (FAISS index) and returns the text with its file name
 import os
 from pathlib import Path
 from langchain_community.vectorstores import FAISS

@@ -1,4 +1,4 @@
-# CareOps AI - packages used so far (clean list)
+# CareOps AI packages
 # Backend / AI
 langchain==1.4.4
 langchain-core==1.6.9
@@ -21,10 +21,11 @@ xgboost==3.4.1
 joblib==1.6.0
 matplotlib==3.11.2
 ipykernel==7.4.0
-# Optional (Gemini, commented in models.py)
+# Optional, only for Gemini
 langchain-google-genai==4.4.0
 google-genai==2.29.0
-# API server and database driver (no version pinned; run pip freeze after install)
+# API and database
 fastapi
 uvicorn
 psycopg2-binary
+pytest

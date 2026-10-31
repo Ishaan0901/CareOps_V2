@@ -1,3 +1,6 @@
+# Small helper to see which models the API key can use.
+# Remove the # in front of a block to run it (first block Gemini, second Groq).
+
 #   For Gemini
 
 # import os

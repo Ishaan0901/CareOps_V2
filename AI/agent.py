@@ -1,20 +1,20 @@
-"""LangGraph agent: decides which tool to call (policy documents, live data , forecast), then answers."""
+# LangGraph agent: picks a tool (policy documents, live data or forecast) and writes the answer.
 from langchain_core.messages import SystemMessage
 from langgraph.graph.message import add_messages
 from typing import Annotated, TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from tools import Search_hospital_docs
-from data_tools import Get_current_status, Get_capacity_status, Get_arrival_forecast, Get_spike_status
+from data_tools import Get_current_status, Get_capacity_status, Get_forecast, Get_spike_status
 from models import llm
 from dotenv import load_dotenv
 load_dotenv()
 
 class AgentState(TypedDict):
-    messages: Annotated[list , add_messages]
+    messages: Annotated[list, add_messages]
 
 
-tools=[Search_hospital_docs, Get_current_status, Get_capacity_status, Get_arrival_forecast, Get_spike_status]
+tools=[Search_hospital_docs, Get_current_status, Get_capacity_status, Get_forecast, Get_spike_status]
 llm_with_tools=llm.bind_tools(tools)
 
 
@@ -23,7 +23,7 @@ SYSTEM_PROMPT = '''You are CareOps AI, an assistant for hospital administrators 
 
 Rules:
     1. For any question about hospital policies, procedures, fees, thresholds or rules, ALWAYS call Search_hospital_docs first. Never answer from your own knowledge.
-    2. For current or latest numbers (beds, occupancy, arrivals, waiting time, staff, alert colour) call Get_current_status. For the current capacity level or recommended actions call Get_capacity_status. For future arrivals call Get_arrival_forecast. For unusual surges call Get_spike_status.
+    2. For current or latest numbers (beds, occupancy, arrivals, waiting time, staff, alert colour) call Get_current_status. For the current capacity level or recommended actions call Get_capacity_status. For the future (arrivals, occupancy or waiting time) call Get_forecast. For unusual surges call Get_spike_status.
     3. For mixed questions (a number AND a rule, for example "Is the ED wait above the alert threshold?"), call both a data tool and Search_hospital_docs, then compare.
     4. When calling Search_hospital_docs, send a complete standalone question. Use the chat history to resolve words like "it", "its" and "and for X?" before calling.
     5. Answer ONLY using the text returned by the tools. Do not guess or invent numbers.

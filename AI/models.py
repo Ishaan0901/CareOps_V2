@@ -1,4 +1,4 @@
-"""Models: embeddings for RAG and the chat LLM (Groq by default, Gemini optional via .env)."""
+# Embedding model for the PDFs and the chat model (Groq by default, Gemini if set in .env)
 import os
 from langchain_huggingface import HuggingFaceEmbeddings
 from dotenv import load_dotenv

@@ -1,4 +1,4 @@
-"""Loads synthetic CSV data into PostgreSQL. Safe to run again (clears old rows first)."""
+# Loads the CSV data into PostgreSQL. It clears the old rows first, so it can be run again.
 from pathlib import Path
 import pandas as pd
 from sqlalchemy import text

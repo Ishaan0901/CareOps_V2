@@ -1,8 +1,10 @@
-"""Shared data logic for CareOps AI (used by the FastAPI app AND the AI agent tools).
-Reads PostgreSQL, runs alert rules, ML forecast and spike detection.
-'Current' = latest timestamp in the database (the dataset is synthetic)."""
-import os, sys
+# Functions used by both the API (main.py) and the chatbot tools.
+# They read the database, apply the alert rules and call the ML models.
+# "Current" means the newest hour in the database (the data is synthetic).
+import os
+import sys
 from pathlib import Path
+
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -11,60 +13,62 @@ ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 sys.path.append(str(ROOT / "ML"))
 sys.path.append(str(Path(__file__).resolve().parent))
-import ml_tools  # noqa  (ML/ml_tools.py: forecast model + anomaly rule)
+import ml_tools
 from alert_rules import evaluate, up, staff_level, arrivals_level, NAMES
 
 engine = create_engine(os.getenv("DATABASE_URL"), pool_pre_ping=True)
 
-# Latest hour of data for every department
+# newest hour, one row per department
 LATEST = """
-    SELECT d.department, d.target_patients_per_nurse, h.* FROM hourly_metrics h
+    SELECT d.department, d.target_patients_per_nurse, h.*
+    FROM hourly_metrics h
     JOIN departments d ON d.department_id = h.department_id
     WHERE h.timestamp = (SELECT MAX(timestamp) FROM hourly_metrics)
     ORDER BY h.department_id
 """
 
+# one value per hour for each metric (hospital level for occupancy, ED for the others)
+SERIES_SQL = {
+    "arrivals": "SELECT timestamp, arrivals AS v FROM hourly_metrics WHERE department_id = 1",
+    "wait": "SELECT timestamp, avg_wait_min AS v FROM hourly_metrics WHERE department_id = 1",
+    "occupancy": """SELECT timestamp, SUM(occupied_beds) * 100.0 / SUM(total_beds) AS v
+                    FROM hourly_metrics GROUP BY timestamp""",
+}
+
+
 def hour_label(ts):
     h = pd.Timestamp(ts).hour
     return f"{h % 12 or 12} {'AM' if h < 12 else 'PM'}"
+
 
 def latest_rows():
     with engine.connect() as c:
         return [dict(r) for r in c.execute(text(LATEST)).mappings().all()]
 
-# ---------- ML ----------
-def ed_history(limit=168):
-    """Last 168 hours of ED data, oldest first (the forecast model needs this)."""
-    q = text("""SELECT timestamp, hour, day_of_week, arrivals, occupancy_rate,
-                avg_wait_min, staff_availability_pct FROM hourly_metrics
-                WHERE department_id = 1 ORDER BY timestamp DESC LIMIT :l""")
+
+def series(metric, hours):
+    """Last `hours` values of a metric as a DataFrame (timestamp, v), oldest first."""
+    q = text(f"SELECT * FROM ({SERIES_SQL[metric]}) s ORDER BY timestamp DESC LIMIT :h")
     with engine.connect() as c:
-        df = pd.DataFrame(c.execute(q, {"l": limit}).mappings().all())
-    df = df.sort_values("timestamp").reset_index(drop=True)
-    for col in ["arrivals", "occupancy_rate", "avg_wait_min", "staff_availability_pct"]:
-        df[col] = df[col].astype(float)   # DB gives Decimal, model needs float
+        rows = c.execute(q, {"h": hours}).mappings().all()
+    df = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
+    df["v"] = df["v"].astype(float)
     return df
 
-def forecast_arrivals(steps=6):
-    """Forecast ED arrivals for the next `steps` hours (each step feeds the next)."""
-    h = ed_history()
-    out = []
-    for _ in range(steps):
-        ts = h["timestamp"].iloc[-1] + pd.Timedelta(hours=1)
-        p = float(ml_tools.predict_arrivals(h, ts))
-        out.append({"hour": ts, "arrivals": round(p, 1)})
-        row = h.iloc[-1].to_dict()
-        row.update(timestamp=ts, hour=ts.hour, day_of_week=ts.dayofweek, arrivals=p)
-        h = pd.concat([h, pd.DataFrame([row])], ignore_index=True).tail(168)
-    return out
+
+def forecast(metric="arrivals", steps=6):
+    s = series(metric, 168)
+    return ml_tools.forecast(metric, s["v"].values, s["timestamp"].iloc[-1], steps)
+
 
 def spike_status():
-    """Is the latest ED hour an unusual arrivals spike?"""
-    last = ed_history(2).iloc[-1]
-    r = ml_tools.detect_anomaly(int(last["hour"]), int(last["day_of_week"]), int(last["arrivals"]))
-    return {"timestamp": last["timestamp"], "arrivals": int(last["arrivals"]), **r}
+    """Is the newest ED hour unusually busy compared with the same hour and weekday?"""
+    s = series("arrivals", 1).iloc[-1]
+    ts = pd.Timestamp(s["timestamp"])
+    r = ml_tools.detect_anomaly(ts.hour, ts.dayofweek, int(s["v"]))
+    return {"timestamp": ts, "arrivals": int(s["v"]), **r}
 
-# ---------- Dashboard ----------
+
 def kpis(rows):
     occ = sum(r["occupied_beds"] for r in rows) / sum(r["total_beds"] for r in rows) * 100
     ed = next(r for r in rows if r["department_id"] == 1)
@@ -78,33 +82,43 @@ def kpis(rows):
         "staff": {"value": round(staff), "level": NAMES[staff_level(staff)].lower()},
     }
 
+
 def departments(rows):
-    ev = {d["department_id"]: d for d in evaluate(rows)["departments"]}
-    cards = [{"n": r["department"], "used": r["occupied_beds"], "total": r["total_beds"],
-              "st": ev[r["department_id"]]["level"].lower(),
-              "tag": f"{ev[r['department_id']]['level']} · Nurses 1:{r['target_patients_per_nurse']}"}
-             for r in rows]
-    return {"departments": cards,
-            "staff": {"present": sum(r["nurses_present"] for r in rows),
-                      "required": sum(r["nurses_scheduled"] for r in rows)}}
+    levels = {d["department_id"]: d["level"] for d in evaluate(rows)["departments"]}
+    cards = []
+    for r in rows:
+        level = levels[r["department_id"]]
+        cards.append({"n": r["department"], "used": r["occupied_beds"], "total": r["total_beds"],
+                      "st": level.lower(),
+                      "tag": f"{level} · Nurses 1:{r['target_patients_per_nurse']}"})
+    staff = {"present": sum(r["nurses_present"] for r in rows),
+             "required": sum(r["nurses_scheduled"] for r in rows)}
+    return {"departments": cards, "staff": staff}
+
 
 def alerts(rows):
-    ev, sp = evaluate(rows), spike_status()
-    order = {n: i for i, n in enumerate(NAMES)}
-    items = [{"t": f"{d['department']}: {', '.join(d['reasons'])}", "c": d["level"].lower(), "src": "Rule"}
-             for d in sorted(ev["departments"], key=lambda d: -order[d["level"]]) if d["level"] != "Green"]
+    ev = evaluate(rows)
+    sp = spike_status()
+    rank = {n: i for i, n in enumerate(NAMES)}
+    items = []
+    for d in sorted(ev["departments"], key=lambda d: -rank[d["level"]]):
+        if d["level"] != "Green":
+            items.append({"t": f"{d['department']}: {', '.join(d['reasons'])}",
+                          "c": d["level"].lower(), "src": "Rule"})
     if not items:
         items.append({"t": "All departments normal", "c": "green", "src": "Rule"})
     if sp["is_anomaly"]:
-        items.append({"t": f"ED arrivals spike, z-score {sp['z_score']}", "c": "red", "label": "Anomaly", "src": "ML"})
+        items.append({"t": f"ED arrivals spike, z-score {sp['z_score']}",
+                      "c": "red", "label": "Anomaly", "src": "ML"})
     else:
         items.append({"t": f"ED arrivals normal, z-score {sp['z_score']}", "c": "green", "src": "ML"})
-    store_alerts(rows, ev, sp)
-    return {"capacity": {"level": ev["capacity_level"], "reasons": ev["reasons"], "actions": ev["actions"]},
-            "alerts": items}
+    save_alerts(rows, ev, sp)
+    return {"capacity": {"level": ev["capacity_level"], "reasons": ev["reasons"],
+                         "actions": ev["actions"]}, "alerts": items}
 
-def store_alerts(rows, ev, sp):
-    """Save alerts to the alerts table once per data timestamp."""
+
+def save_alerts(rows, ev, sp):
+    """Store the alerts in the alerts table (only once for each hour of data)."""
     ts = rows[0]["timestamp"]
     with engine.begin() as c:
         c.execute(text("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS data_time TIMESTAMP"))
@@ -120,43 +134,39 @@ def store_alerts(rows, ev, sp):
             c.execute(ins, {"d": 1, "l": "Red", "c": ev["capacity_level"],
                             "m": f"ED arrivals spike, z-score {sp['z_score']}", "s": "ml", "t": ts})
 
+
 def alert_history(limit=50):
+    q = text("""SELECT id, created_at, data_time, department_id, level, capacity_level, message, source
+                FROM alerts ORDER BY id DESC LIMIT :l""")
     with engine.connect() as c:
-        return [dict(r) for r in c.execute(text(
-            "SELECT id, created_at, data_time, department_id, level, capacity_level, message, source "
-            "FROM alerts ORDER BY id DESC LIMIT :l"), {"l": limit}).mappings().all()]
+        return [dict(r) for r in c.execute(q, {"l": limit}).mappings().all()]
+
 
 def trend(metric, hours=48):
-    """Past values (+ ML forecast and anomalies for ED arrivals) for the trend chart."""
-    if metric == "occupancy":
-        q = "SELECT timestamp, SUM(occupied_beds)*100.0/SUM(total_beds) AS v FROM hourly_metrics GROUP BY timestamp ORDER BY timestamp DESC LIMIT :h"
-        title, suf = "Hospital occupancy (%): past values", "%"
-    elif metric == "wait":
-        q = "SELECT timestamp, avg_wait_min AS v FROM hourly_metrics WHERE department_id=1 ORDER BY timestamp DESC LIMIT :h"
-        title, suf = "ED waiting time (min): past values", " min"
-    else:
+    """Data for the trend graph: past values, 6 hour forecast and anomaly points."""
+    titles = {"arrivals": ("ED arrivals: past and forecast", ""),
+              "occupancy": ("Hospital occupancy (%): past and forecast", "%"),
+              "wait": ("ED waiting time (min): past and forecast", " min")}
+    if metric not in titles:
         metric = "arrivals"
-        q = "SELECT timestamp, arrivals AS v FROM hourly_metrics WHERE department_id=1 ORDER BY timestamp DESC LIMIT :h"
-        title, suf = "ED arrivals: past and forecast", ""
-    with engine.connect() as c:
-        rows = list(reversed(c.execute(text(q), {"h": hours}).mappings().all()))
-    past = [round(float(r["v"]), 1) for r in rows]
-    fc, an, peak = [], [], "-"
-    if metric == "arrivals":
-        for i, r in enumerate(rows):    # ML anomaly check for each past hour
-            ts = pd.Timestamp(r["timestamp"])
-            if ml_tools.detect_anomaly(ts.hour, ts.dayofweek, int(r["v"]))["is_anomaly"]:
-                an.append(i)
-        f = forecast_arrivals(6)
-        fc = [x["arrivals"] for x in f]
-        peak = hour_label(max(f, key=lambda x: x["arrivals"])["hour"])
-    return {"title": title, "suf": suf, "past": past, "fc": fc, "an": an, "peak": peak}
+    past = series(metric, hours)
+    fc = forecast(metric, 6)
+    anomalies = []
+    if metric == "arrivals":   # the anomaly rule only exists for ED arrivals
+        for i, row in past.iterrows():
+            ts = pd.Timestamp(row["timestamp"])
+            if ml_tools.detect_anomaly(ts.hour, ts.dayofweek, int(row["v"]))["is_anomaly"]:
+                anomalies.append(i)
+    peak = max(fc, key=lambda x: x["value"])
+    return {"title": titles[metric][0], "suf": titles[metric][1],
+            "past": [round(v, 1) for v in past["v"]], "fc": [x["value"] for x in fc],
+            "an": anomalies, "peak": hour_label(peak["hour"])}
 
-# ---------- Knowledge base ----------
+
 def documents():
-    """List of [title, file name] for the PDFs in data/RAG_Pdfs."""
+    """[title, file name] for every PDF in data/RAG_Pdfs."""
     out = []
     for f in sorted((ROOT / "data" / "RAG_Pdfs").glob("*.pdf")):
-        title = f.stem.split("_", 1)[1].replace("_", " ") if f.stem[:2].isdigit() else f.stem
-        out.append([title, f.name])
+        name = f.stem.split("_", 1)[1] if f.stem[:2].isdigit() else f.stem
+        out.append([name.replace("_", " "), f.name])
     return out
